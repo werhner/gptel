@@ -143,6 +143,8 @@ PROCESS and _STATUS are process parameters."
             ;; Finish handling response
             (with-current-buffer (marker-buffer start-marker)
               (pulse-momentary-highlight-region (+ start-marker 2) tracking-marker)
+              (save-excursion (goto-char tracking-marker)
+                              (insert "[/ai]"))
               (when gptel-mode (save-excursion (goto-char tracking-marker)
                                                (insert "\n\n" (gptel-prompt-string)))))
             (with-current-buffer gptel-buffer
@@ -191,7 +193,7 @@ See `gptel--url-get-response' for details."
               (gptel--update-header-line " Typing..." 'success)
               (goto-char start-marker)
               (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n\n"))
+                (insert "\n[ai]"))
               (setq tracking-marker (set-marker (make-marker) (point)))
               (set-marker-insertion-type tracking-marker t)
               (plist-put info :tracking-marker tracking-marker))
@@ -199,7 +201,6 @@ See `gptel--url-get-response' for details."
             (when transformer
               (setq response (funcall transformer response)))
             
-            (put-text-property 0 (length response) 'gptel 'response response)
             (goto-char tracking-marker)
             (insert response))))))
 

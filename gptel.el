@@ -56,6 +56,7 @@
 (declare-function gptel-curl-get-response "gptel-curl")
 (declare-function gptel-menu "gptel-transient")
 (declare-function pulse-momentary-highlight-region "pulse")
+(declare-function gptel-bito-get-response "gptel-bito")
 
 ;; Functions used for saving/restoring gptel state in Org buffers
 (defvar org-entry-property-inherited-from)
@@ -117,6 +118,11 @@ all at once. This wait is asynchronous.
 
 (defcustom gptel-use-curl (and (executable-find "curl") t)
   "Whether gptel should prefer Curl when available."
+  :group 'gptel
+  :type 'boolean)
+
+(defcustom gptel-use-bito nil
+  "Whether gptel should prefer bito when available."
   :group 'gptel
   :type 'boolean)
 
@@ -369,8 +375,8 @@ opening the file."
         (unless (memq major-mode '(org-mode markdown-mode text-mode))
           (gptel-mode -1)
           (user-error (format "`gptel-mode' is not supported in `%s'." major-mode)))
-        (add-hook 'before-save-hook #'gptel--save-state nil t)
-        (gptel--restore-state)
+        ;(add-hook 'before-save-hook #'gptel--save-state nil t)
+        ;(gptel--restore-state)
         (setq gptel--old-header-line header-line-format
               header-line-format
               (list (concat (propertize " " 'display '(space :align-to 0))
@@ -509,8 +515,9 @@ Model parameters can be let-bound around calls to this function."
     (when context (plist-put info :context context))
     (when in-place (plist-put info :in-place in-place))
     (funcall
-     (if gptel-use-curl
-         #'gptel-curl-get-response #'gptel--url-get-response)
+     (if gptel-use-bito
+         #'gptel-bito-get-response (if gptel-use-curl
+                                       #'gptel-curl-get-response #'gptel--url-get-response))
      info callback)))
 
 ;; TODO: Handle multiple requests(#15). (Only one request from one buffer at a time?)
@@ -531,8 +538,9 @@ instead."
          (gptel-buffer (current-buffer))
          (full-prompt (gptel--create-prompt response-pt)))
     (funcall
-     (if gptel-use-curl
-         #'gptel-curl-get-response #'gptel--url-get-response)
+     (if gptel-use-bito
+         #'gptel-bito-get-response (if gptel-use-curl
+                                       #'gptel-curl-get-response #'gptel--url-get-response))
      (list :prompt full-prompt
            :buffer gptel-buffer
            :position response-pt)))
@@ -602,8 +610,8 @@ current heading and the cursor position."
   "If a conversation topic is set, return it."
   (pcase major-mode
     ('org-mode
-     (when (org-entry-get (point) "GPTEL_TOPIC" 'inherit)
-         (marker-position org-entry-property-inherited-from)))
+     (when (re-search-backward "^\\*\\{1,2\\} gpt" nil t)
+       (re-search-forward "^\\*\\{1,2\\} gpt")))
     ('markdown-mode nil)))
 
 (defun gptel--create-prompt (&optional prompt-end)
@@ -631,25 +639,38 @@ there."
        (t (goto-char (or prompt-end (point-max)))))
       (let ((max-entries (and gptel--num-messages-to-send
                               (* 2 gptel--num-messages-to-send)))
-            (prop) (prompts))
+            (prop) (prompts) (temp)
+            (last-position (point))
+            (continue t))
         (while (and
                 (or (not max-entries) (>= max-entries 0))
-                (setq prop (text-property-search-backward
-                            'gptel 'response
-                            (when (get-char-property (max (point-min) (1- (point)))
-                                                     'gptel)
-                              t))))
-          (push (list :role (if (prop-match-value prop) "assistant" "user")
+                continue)
+          (setq prop (re-search-backward "\\[/?ai\\]" nil t))
+
+          (pcase prop
+            ((pred null)
+             (setq temp `(:start ,(point-min) :end ,last-position :role "user")))
+            ((guard (looking-at "\\[ai\\]"))
+             (setq temp `(:start ,(+ prop 4) :end ,last-position :role "assistant")))
+            ((guard (looking-at "\\[/ai\\]"))
+             (setq temp `(:start ,(+ prop 5) :end ,last-position :role "user"))))
+
+          (setq last-position (point))
+          (when (null prop) (setq continue nil))
+
+          (push (list :role (plist-get temp :role)
                       :content
                       (string-trim
-                       (buffer-substring-no-properties (prop-match-beginning prop)
-                                                       (prop-match-end prop))
+                       (buffer-substring-no-properties (plist-get temp :start)
+                                                       (plist-get temp :end))
                        "[*# \t\n\r]+"))
                 prompts)
           (and max-entries (cl-decf max-entries)))
-        (cons (list :role "system"
-                    :content gptel--system-message)
-              prompts)))))
+        (if gptel--system-message
+            (cons (list :role "system"
+                        :content gptel--system-message)
+                  prompts))
+        prompts))))
 
 (defun gptel--request-data (prompts)
   "JSON encode PROMPTS for sending to ChatGPT."
