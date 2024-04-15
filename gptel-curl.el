@@ -211,9 +211,11 @@ PROCESS and _STATUS are process parameters."
             (if (not tracking-marker)   ;Empty response
                 (when gptel-mode (gptel--update-status " Empty response" 'success))
               (pulse-momentary-highlight-region start-marker tracking-marker)
+              (save-excursion (goto-char tracking-marker)
+                              (insert "\n\n[/ai]\n"))
               (when gptel-mode
                 (save-excursion (goto-char tracking-marker)
-                                (insert "\n\n" (gptel-prompt-prefix-string)))
+                                (insert "\n" (gptel-prompt-prefix-string)))
                 (gptel--update-status  " Ready" 'success))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
@@ -268,7 +270,7 @@ See `gptel--url-get-response' for details."
               (gptel--update-status " Typing..." 'success)
               (goto-char start-marker)
               (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n\n")
+                (insert "\n[ai]\n\n")
                 (when gptel-mode
                   ;; Put prefix before AI response.
                   (insert (gptel-response-prefix-string)))

@@ -112,24 +112,35 @@
     prompts-plist))
 
 (cl-defmethod gptel--parse-buffer ((_backend gptel-openai) &optional max-entries)
-  (let ((prompts) (prop))
+  (let ((prompts) (prop) (continue t) (last-position (point)) (temp))
     (while (and
             (or (not max-entries) (>= max-entries 0))
-            (setq prop (text-property-search-backward
-                        'gptel 'response
-                        (when (get-char-property (max (point-min) (1- (point)))
-                                                 'gptel)
-                          t))))
-      (push (list :role (if (prop-match-value prop) "assistant" "user")
+            continue)
+
+      (setq prop (re-search-backward "\\[/?ai\\]" nil t))
+
+      (pcase prop
+        ((pred null)
+         (setq temp `(:start ,(point-min) :end ,last-position :role "user")))
+        ((guard (looking-at "\\[ai\\]"))
+         (setq temp `(:start ,(+ prop 4) :end ,last-position :role "assistant")))
+        ((guard (looking-at "\\[/ai\\]"))
+         (setq temp `(:start ,(+ prop 5) :end ,last-position :role "user"))))
+
+      (setq last-position (point))
+      (when (null prop) (setq continue nil))
+
+      (push (list :role (plist-get temp :role)
                   :content
                   (string-trim
-                   (buffer-substring-no-properties (prop-match-beginning prop)
-                                                   (prop-match-end prop))
+                   (buffer-substring-no-properties (plist-get temp :start)
+                                                   (plist-get temp :end))
                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                            (regexp-quote (gptel-prompt-prefix-string)))
                    (format "[\t\r\n ]*\\(?:%s\\)?[\t\r\n ]*"
                            (regexp-quote (gptel-response-prefix-string)))))
             prompts)
+
       (and max-entries (cl-decf max-entries)))
     (cons (list :role "system"
                 :content gptel--system-message)
