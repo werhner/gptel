@@ -270,7 +270,7 @@ See `gptel--url-get-response' for details."
               (gptel--update-status " Typing..." 'success)
               (goto-char start-marker)
               (unless (or (bobp) (plist-get info :in-place))
-                (insert "\n[ai]\n\n")
+                (insert "\n\n[ai]\n\n")
                 (when gptel-mode
                   ;; Put prefix before AI response.
                   (insert (gptel-response-prefix-string)))
