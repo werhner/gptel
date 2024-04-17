@@ -212,10 +212,10 @@ PROCESS and _STATUS are process parameters."
                 (when gptel-mode (gptel--update-status " Empty response" 'success))
               (pulse-momentary-highlight-region start-marker tracking-marker)
               (save-excursion (goto-char tracking-marker)
-                              (insert "\n\n[/ai]\n"))
+                              (insert "\n\n[/ai]\n\n"))
               (when gptel-mode
                 (save-excursion (goto-char tracking-marker)
-                                (insert "\n" (gptel-prompt-prefix-string)))
+                                (insert (gptel-prompt-prefix-string)))
                 (gptel--update-status  " Ready" 'success))))
         ;; Or Capture error message
         (with-current-buffer proc-buf
